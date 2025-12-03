@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>デジタル作図アプリ</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: sans-serif;
+            background-color: #333;
+        }
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #ffffff;
+            touch-action: none;
+        }
+        .canvas-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        #bg-canvas { z-index: 1; }
+        #main-canvas { z-index: 2; }
+        #preview-canvas { z-index: 3; }
+        #toolbar {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            background: rgba(240, 240, 240, 0.95);
+            border: 1px solid #888;
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            touch-action: manipulation;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+        }
+        .tool-button,
+        .tool-input {
+            padding: 8px;
+            font-size: 14px;
+            border: 1px solid #777;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background-color: #fff;
+            color: #333;
+            text-align: left;
+        }
+        .tool-button.active {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+            font-weight: bold;
+        }
+        .tool-button.active-lock {
+            background-color: #dc3545; /* 赤色 */
+            color: white;
+            border-color: #dc3545;
+            font-weight: bold;
+        }
+        .tool-button:hover:not(.active) {
+            background-color: #eee;
+        }
+        #compassModeToggle,
+        #penModeToggle {
+            background-color: #e0e0e0;
+            text-align: center;
+            font-style: italic;
+        }
+        #modeToggle {
+            background-color: #28a745;
+            color: white;
+            font-weight: bold;
+        }
+        #undoButton {
+            background-color: #fff0b3;
+            font-weight: bold;
+            color: #333;
+        }
+        #saveStateButton {
+            background-color: #cce5ff;
+            color: #004085;
+            font-weight: bold;
+        }
+        #loadStateButton {
+            background-color: #d4edda;
+            color: #155724;
+            font-weight: bold;
+        }
+        #clearStateButton {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .separator {
+            height: 1px;
+            background-color: #ccc;
+            margin: 4px 0;
+        }
+        #fileInput, #pasteInput {
+            display: none;
+        }
+        .tool-input label {
+            display: block;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+        .tool-input input[type="range"] {
+            width: 100%;
+        }
+        
+        /* カラーパレット */
+        #color-palette {
+            display: flex;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        .color-button {
+            width: 25px;
+            height: 25px;
+            border: 2px solid #888;
+            cursor: pointer;
+            padding: 0;
+            border-radius: 4px;
+            transition: all 0.1s ease;
+        }
+        .color-button.selected {
+            border-color: #007bff;
+            border-width: 3px;
+            transform: scale(1.1);
+        }
+
+        body.touch-mode #toolbar {
+            padding: 12px;
+            gap: 12px;
+        }
+        body.touch-mode .tool-button,
+        body.touch-mode .tool-input {
+            padding: 16px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        body.touch-mode .tool-input label {
+             font-size: 14px;
+        }
+        body.touch-mode .color-button {
+            width: 35px;
+            height: 35px;
+            gap: 8px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container">
+        <canvas id="bg-canvas" class="canvas-layer"></canvas>
+        <canvas id="main-canvas" class="canvas-layer"></canvas>
+        <canvas id="preview-canvas" class="canvas-layer"></canvas>
+    </div>
+
+    <div id="toolbar">
+        <button id="modeToggle">タッチモードへ</button>
+        <div class="separator"></div>
+
+        <button id="compassButton" class="tool-button">1. コンパス</button>
+        <button id="compassModeToggle" class="tool-button">1b. 円を描く</button>
+        <button id="compassLockRadiusButton" class="tool-button">1c. 半径を固定</button>
+        <button id="rulerButton" class="tool-button">2. 定規</button>
+        <button id="penButton" class="tool-button">3. ペン (フリーハンド)</button>
+        <button id="penModeToggle" class="tool-button">3b. 点を打つ</button>
+        
+        <div class="separator"></div>
+
+        <button id="eraserButton" class="tool-button">4. 消しゴム</button>
+        <button id="selectEraseButton" class="tool-button">5. 選択消去</button>
+        <button id="clearAllButton" class="tool-button">6. 全消去(描画のみ)</button>
+        <button id="undoButton" class="tool-button">元に戻す (Undo)</button>
+
+        <div class="separator"></div>
+
+        <button id="saveFullButton" class="tool-button">7. 全画面保存(画像)</button>
+        
+        <button id="pasteImageButton" class="tool-button">8. 画像貼り付け</button>
+        <input type="file" id="pasteInput" accept="image/*">
+
+        <button id="loadImageButton" class="tool-button">9. 画像読込(背景)</button>
+        <input type="file" id="fileInput" accept="image/*">
+        
+        <div class="separator"></div>
+        
+        <button id="saveStateButton" class="tool-button">10. 作業を保存 (PCに)</button>
+        <button id="loadStateButton" class="tool-button">11. 作業を読込 (PCから)</button>
+        <button id="clearStateButton" class="tool-button">12. 保存を消去</button>
+
+        <div class="separator"></div>
+
+        <div class="tool-input">
+            <label for="lineWidthSlider">線の太さ / 画像サイズ: <span id="lineWidthValue">5</span></label>
+            <input type="range" id="lineWidthSlider" min="1" max="100" value="5">
+        </div>
+        
+        <div class="tool-input">
+            <label>線の色</label>
+            <div id="color-palette">
+                <button class="color-button" data-color="#000000" style="background-color: #000000;"></button>
+                <button class="color-button" data-color="#FF0000" style="background-color: #FF0000;"></button>
+                <button class="color-button" data-color="#0000FF" style="background-color: #0000FF;"></button>
+                <button class="color-button" data-color="#008000" style="background-color: #008000;"></button>
+                <button class="color-button" data-color="#FFFF00" style="background-color: #FFFF00;"></button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. DOM要素の取得 -------------------------
+        const bgCanvas = document.getElementById('bg-canvas');
+        const mainCanvas = document.getElementById('main-canvas');
+        const previewCanvas = document.getElementById('preview-canvas');
+
+        const bgCtx = bgCanvas.getContext('2d');
+        const mainCtx = mainCanvas.getContext('2d'); 
+        const previewCtx = previewCanvas.getContext('2d');
+
+        const toolbar = document.getElementById('toolbar');
+        const modeToggleButton = document.getElementById('modeToggle');
+        const fileInput = document.getElementById('fileInput');
+        const pasteInput = document.getElementById('pasteInput');
+        const lineWidthSlider = document.getElementById('lineWidthSlider');
+        const lineWidthValue = document.getElementById('lineWidthValue');
+        const compassModeToggleButton = document.getElementById('compassModeToggle');
+        const undoButton = document.getElementById('undoButton');
+        const compassLockRadiusButton = document.getElementById('compassLockRadiusButton');
+        const saveStateButton = document.getElementById('saveStateButton');
+        const loadStateButton = document.getElementById('loadStateButton');
+        const clearStateButton = document.getElementById('clearStateButton');
+        const colorPalette = document.getElementById('color-palette');
+        const penModeToggleButton = document.getElementById('penModeToggle');
+        const pasteImageButton = document.getElementById('pasteImageButton');
+
+        // --- 2. アプリの状態管理 -------------------------
+        let isTouchMode = false;
+        let currentTool = 'none';
+        let isDrawing = false;
+        
+        let startPos = { x: 0, y: 0 };
+        let currentPos = { x: 0, y: 0 };
+        let selectionRect = null;
+        
+        let toolSettings = {
+            lineWidth: 5,
+            lineColor: '#000000'
+        };
+        
+        let backgroundImage = null;
+        
+        let tempMainCanvas = document.createElement('canvas');
+        let tempMainCtx = tempMainCanvas.getContext('2d');
+
+        // コンパス
+        let compassState = 'idle'; 
+        let compassCenter = null;
+        let compassRadius = 0; 
+        let compassStartAngle = 0;
+        let compassDrawMode = 'arc';
+        let isRadiusLocked = false;
+        let lockedRadius = 0;
+        
+        // ペンモード
+        let penDrawMode = 'freehand';
+        
+        // 貼り付け画像
+        let pastingImage = null;
+        let pasteScale = 1.0; 
+        // ★★★ (新規) 貼り付けステージ管理 ('positioning' or 'resizing') ★★★
+        let pastingStage = 'positioning'; 
+        let pasteFixedPos = null;
+        // ★★★ ここまで ★★★
+
+        // Undo
+        let undoHistory = [];
+        const MAX_UNDO_STEPS = 20; 
+
+        // Storage
+        const STORAGE_KEY_MAIN = 'digitalDrawingApp_mainCanvas';
+        const STORAGE_KEY_BG = 'digitalDrawingApp_bgCanvas';
+        const STORAGE_KEY_POINTS = 'digitalDrawingApp_pointsHistory';
+        
+        // 点・スナップ
+        let pointsHistory = []; 
+        const SNAP_DISTANCE = 15; 
+        const POINT_RADIUS = 3; 
+
+
+        // --- 3. 初期化処理 ---
+        window.addEventListener('load', initialize);
+        window.addEventListener('resize', resizeAllCanvas);
+
+        function initialize() {
+            setupToolbarListeners(); 
+            setupCanvasListeners();
+            setupCompassModeToggle();
+            setupCompassLockRadiusButton();
+            setupStateButtons();
+            setupColorPalette();
+            setupPenModeToggle();
+
+            lineWidthSlider.addEventListener('input', (e) => {
+                toolSettings.lineWidth = e.target.value;
+                lineWidthValue.textContent = e.target.value;
+                
+                // ★★★ (修正) 貼り付けモードかつリサイズ中なら、プレビューを更新 ★★★
+                if (currentTool === 'paste' && pastingImage) {
+                    pasteScale = e.target.value / 20.0;
+                    let targetPos = (pastingStage === 'resizing') ? pasteFixedPos : currentPos;
+                    if (targetPos) drawPastePreview(targetPos);
+                }
+                // ★★★ ここまで ★★★
+            });
+
+            if ('ontouchstart' in window) {
+                toggleMode(true);
+            }
+            
+            resizeAllCanvas();
+            applyToolSettings(mainCtx);
+            
+            document.querySelector('.color-button[data-color="#000000"]').classList.add('selected');
+            
+            try {
+                if (localStorage.getItem(STORAGE_KEY_MAIN)) {
+                    if (confirm('以前保存した作業データが見つかりました。読み込みますか？')) {
+                        loadStateFromLocalStorage();
+                    }
+                }
+            } catch (e) {
+                console.warn("ローカルストレージへのアクセスに失敗しました。", e.message);
+            }
+        }
+
+        // --- 4. キャンバスリサイズ ---
+        function resizeAllCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = document.getElementById('canvas-container').getBoundingClientRect();
+            
+            if (mainCanvas.width > 0 && mainCanvas.height > 0) {
+                 tempMainCanvas.width = mainCanvas.width;
+                 tempMainCanvas.height = mainCanvas.height;
+                 tempMainCtx.scale(dpr, dpr);
+                 tempMainCtx.drawImage(mainCanvas, 0, 0, mainCanvas.width / dpr, mainCanvas.height / dpr);
+                 tempMainCtx.setTransform(1, 0, 0, 1, 0, 0); 
+            }
+
+            [bgCanvas, mainCanvas, previewCanvas].forEach(canvas => {
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.height * dpr;
+                canvas.style.width = `${rect.width}px`;
+                canvas.style.height = `${rect.height}px`;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.scale(dpr, dpr);
+            });
+            
+            applyToolSettings(mainCtx);
+            
+            if (tempMainCanvas.width > 0) {
+                 mainCtx.drawImage(tempMainCanvas, 0, 0, tempMainCanvas.width / dpr, tempMainCanvas.height / dpr);
+            }
+            
+            redrawBgCanvas();
+        }
+        
+        function redrawBgCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            bgCtx.clearRect(0, 0, bgCanvas.width / dpr, bgCanvas.height / dpr);
+            if (backgroundImage) {
+                bgCtx.drawImage(backgroundImage, 0, 0, bgCanvas.width / dpr, bgCanvas.height / dpr);
+            }
+        }
+        
+        function applyToolSettings(ctx) {
+            ctx.strokeStyle = toolSettings.lineColor;
+            ctx.lineWidth = toolSettings.lineWidth;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.globalCompositeOperation = (currentTool === 'eraser') ? 'destination-out' : 'source-over';
+            ctx.setLineDash([]); 
+        }
+
+
+        // --- 5. モード切替 ---
+        function toggleMode(forceTouch = null) {
+            isTouchMode = forceTouch !== null ? forceTouch : !isTouchMode;
+            document.body.classList.toggle('touch-mode', isTouchMode);
+            modeToggleButton.textContent = isTouchMode ? 'マウスモードへ' : 'タッチモードへ';
+        }
+
+        // --- 6. ツールバー ---
+        
+        function setupColorPalette() {
+            colorPalette.addEventListener('click', (e) => {
+                const target = e.target.closest('.color-button');
+                if (!target) return;
+                const newColor = target.dataset.color;
+                toolSettings.lineColor = newColor;
+                applyToolSettings(mainCtx);
+                toolbar.querySelectorAll('.color-button').forEach(btn => {
+                    btn.classList.remove('selected');
+                });
+                target.classList.add('selected');
+            });
+        }
+
+        function setupPenModeToggle() {
+            penModeToggleButton.addEventListener('click', () => {
+                if (penDrawMode === 'freehand') {
+                    penDrawMode = 'point';
+                    penModeToggleButton.textContent = '3b. フリーハンド';
+                } else {
+                    penDrawMode = 'freehand';
+                    penModeToggleButton.textContent = '3b. 点を打つ';
+                }
+                currentTool = 'pen';
+                setActiveButton(document.getElementById('penButton'));
+            });
+        }
+
+        function setupCompassModeToggle() {
+            compassModeToggleButton.addEventListener('click', () => {
+                if (compassDrawMode === 'arc') {
+                    compassDrawMode = 'circle';
+                    compassModeToggleButton.textContent = '1b. 弧を描く';
+                } else {
+                    compassDrawMode = 'arc';
+                    compassModeToggleButton.textContent = '1b. 円を描く';
+                }
+            });
+        }
+        
+        function setupCompassLockRadiusButton() {
+            compassLockRadiusButton.addEventListener('click', () => {
+                isRadiusLocked = !isRadiusLocked;
+                if (isRadiusLocked) {
+                    if (compassRadius > 0) {
+                        lockedRadius = compassRadius;
+                        compassLockRadiusButton.classList.add('active-lock');
+                        compassLockRadiusButton.textContent = '1c. 半径解除';
+                    } else {
+                        isRadiusLocked = false; 
+                        alert("先に円か弧を描画して半径を決定してください。");
+                    }
+                } else {
+                    lockedRadius = 0;
+                    compassLockRadiusButton.classList.remove('active-lock');
+                    compassLockRadiusButton.textContent = '1c. 半径を固定';
+                }
+            });
+        }
+        
+        function setupStateButtons() {
+            saveStateButton.addEventListener('click', saveStateToLocalStorage);
+            loadStateButton.addEventListener('click', loadStateFromLocalStorage);
+            clearStateButton.addEventListener('click', clearStateFromLocalStorage);
+        }
+
+        function setupToolbarListeners() {
+            modeToggleButton.addEventListener('click', () => toggleMode());
+            undoButton.addEventListener('click', undoLastAction);
+
+            toolbar.addEventListener('click', (e) => {
+                if (e.target.classList.contains('color-button')) return;
+                
+                const target = e.target.closest('button');
+                const ignoreList = ['compassModeToggle', 'penModeToggle', 'modeToggle', 'undoButton', 'compassLockRadiusButton', 'saveStateButton', 'loadStateButton', 'clearStateButton', 'pasteImageButton'];
+                if (!target || ignoreList.includes(target.id)) return;
+
+                const id = target.id;
+                
+                if (target.classList.contains('tool-button')) {
+                    
+                    if (id !== 'compassButton' && compassState !== 'idle') {
+                        compassState = 'idle';
+                        compassCenter = null;
+                        clearPreviewCanvas();
+                        isDrawing = false;
+                    }
+                    
+                    // 貼り付けモード解除
+                    if (id !== 'pasteImageButton' && currentTool === 'paste') {
+                        pastingImage = null;
+                        clearPreviewCanvas();
+                        pastingStage = 'positioning';
+                        pasteFixedPos = null;
+                    }
+
+                    switch (id) {
+                        case 'penButton': currentTool = 'pen'; break;
+                        case 'rulerButton': currentTool = 'ruler'; break;
+                        case 'compassButton': currentTool = 'compass'; break;
+                        case 'eraserButton': currentTool = 'eraser'; break;
+                        case 'selectEraseButton': currentTool = 'selectErase'; break;
+                        
+                        case 'clearAllButton':
+                            if (confirm('描画内容をすべて消去しますか？ (背景画像は残ります)')) {
+                                saveUndoState();
+                                clearMainCanvas();
+                                pointsHistory = []; 
+                            }
+                            return; 
+                        case 'saveFullButton':
+                            saveFullCanvas();
+                            return;
+                        case 'loadImageButton':
+                            fileInput.click();
+                            return;
+                    }
+                    
+                    applyToolSettings(mainCtx); 
+                    setActiveButton(target);
+                }
+            });
+            
+            fileInput.addEventListener('change', handleImageLoad);
+            
+            pasteImageButton.addEventListener('click', () => {
+                pasteInput.click();
+            });
+            
+            pasteInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    pastingImage = new Image();
+                    pastingImage.onload = function() {
+                        currentTool = 'paste';
+                        pasteScale = toolSettings.lineWidth / 20.0; 
+                        // ★★★ (新規) ステージ初期化 ★★★
+                        pastingStage = 'positioning';
+                        pasteFixedPos = null;
+                        // ★★★ ここまで ★★★
+                        setActiveButton(pasteImageButton);
+                        alert("貼り付けモード:\n1. クリックして位置を決定\n2. スライダーでサイズを調整\n3. もう一度クリックして確定");
+                    }
+                    pastingImage.src = evt.target.result;
+                }
+                reader.readAsDataURL(file);
+                e.target.value = null;
+            });
+        }
+        
+        function setActiveButton(activeButton) {
+            toolbar.querySelectorAll('.tool-button').forEach(btn => {
+                const ignoreList = ['compassModeToggle', 'penModeToggle', 'modeToggle', 'undoButton', 'compassLockRadiusButton', 'saveStateButton', 'loadStateButton', 'clearStateButton'];
+                if (!ignoreList.includes(btn.id)) {
+                    btn.classList.remove('active');
+                }
+            });
+            if (activeButton) {
+                activeButton.classList.add('active');
+            }
+        }
+
+        // --- 7. キャンバス描画 (Pointer Events) ---
+        
+        function setupCanvasListeners() {
+            previewCanvas.addEventListener('pointerdown', handlePointerDown);
+            previewCanvas.addEventListener('pointermove', handlePointerMove);
+            previewCanvas.addEventListener('pointerup', handlePointerUp);
+            previewCanvas.addEventListener('pointerleave', handlePointerLeave);
+        }
+
+        function handlePointerDown(e) {
+            if (toolbar.contains(e.target) || currentTool === 'none') return;
+            e.preventDefault();
+            const pos = getPosition(e);
+            
+            // ★★★ (修正) 画像貼り付け (2段階) ★★★
+            if (currentTool === 'paste' && pastingImage) {
+                if (pastingStage === 'positioning') {
+                    // 1. 位置決定
+                    pasteFixedPos = pos;
+                    pastingStage = 'resizing';
+                    // プレビューを固定位置で描画
+                    drawPastePreview(pasteFixedPos);
+                } else if (pastingStage === 'resizing') {
+                    // 2. 確定 (描画)
+                    saveUndoState();
+                    const width = pastingImage.width * pasteScale;
+                    const height = pastingImage.height * pasteScale;
+                    mainCtx.drawImage(pastingImage, pasteFixedPos.x - width/2, pasteFixedPos.y - height/2, width, height);
+                    
+                    // 完了処理 (モード解除)
+                    pastingImage = null;
+                    clearPreviewCanvas();
+                    pastingStage = 'positioning';
+                    pasteFixedPos = null;
+                    currentTool = 'none'; 
+                    setActiveButton(null);
+                }
+                return;
+            }
+            // ★★★ ここまで ★★★
+
+            // --- 点を打つ ---
+            if (currentTool === 'pen' && penDrawMode === 'point') {
+                saveUndoState();
+                const pointPos = getSnappedPoint(pos); 
+                drawPoint(mainCtx, pointPos); 
+                pointsHistory.push({ x: pointPos.x, y: pointPos.y }); 
+                isDrawing = false; 
+                return;
+            }
+
+            // --- スナップ開始点 ---
+            let snappedPos = pos;
+            if (currentTool === 'ruler' || (currentTool === 'compass' && compassState === 'idle')) {
+                const p = getSnappedPoint(pos);
+                snappedPos = { x: p.x, y: p.y };
+            }
+            startPos = snappedPos;
+
+            // --- コンパス ---
+            if (currentTool === 'compass') {
+                saveUndoState(); 
+
+                if (compassDrawMode === 'circle') {
+                    compassCenter = startPos;
+                    compassState = 'drawingArc';
+                    isDrawing = true;
+                    currentPos = startPos;
+                    compassRadius = isRadiusLocked ? lockedRadius : 0;
+                    clearPreviewCanvas();
+                    drawCross(previewCtx, compassCenter, 5, 'black');
+                } else {
+                    if (compassState === 'idle') {
+                        compassCenter = startPos;
+                        compassState = 'centerSet';
+                        isDrawing = false;
+                        clearPreviewCanvas();
+                        drawCross(previewCtx, compassCenter, 5, 'black');
+                        return; 
+                    }
+                    if (compassState === 'centerSet') {
+                        isDrawing = true; 
+                        startPos = { ...getSnappedPoint(pos) }; 
+                        compassStartAngle = Math.atan2(startPos.y - compassCenter.y, startPos.x - compassCenter.x);
+                        compassState = 'drawingArc';
+                        currentPos = startPos;
+                        if (isRadiusLocked) {
+                            compassRadius = lockedRadius;
+                        } else {
+                            compassRadius = Math.hypot(startPos.x - compassCenter.x, startPos.y - compassCenter.y);
+                        }
+                    }
+                }
+            } 
+            // --- その他のツール ---
+            else if (currentTool === 'pen' || currentTool === 'eraser' || currentTool === 'ruler' || currentTool === 'selectErase') {
+                saveUndoState();
+                isDrawing = true;
+                currentPos = startPos;
+            } else {
+                isDrawing = true;
+                currentPos = startPos;
+            }
+
+            selectionRect = null;
+
+            if ((currentTool === 'pen' && penDrawMode === 'freehand') || currentTool === 'eraser') {
+                applyToolSettings(mainCtx);
+                mainCtx.beginPath();
+                mainCtx.moveTo(startPos.x, startPos.y);
+            }
+        }
+
+        function handlePointerMove(e) {
+            // ★★★ (修正) 画像貼り付けプレビュー ★★★
+            if (currentTool === 'paste' && pastingImage) {
+                if (pastingStage === 'positioning') {
+                    // 位置決め中：マウスに追従
+                    const pos = getPosition(e);
+                    currentPos = pos;
+                    drawPastePreview(pos);
+                } else if (pastingStage === 'resizing') {
+                    // リサイズ中：位置固定 (スライダーでのみ更新されるのでここは触らない)
+                }
+                return;
+            }
+            // ★★★ ここまで ★★★
+
+            if (!isDrawing && (compassDrawMode !== 'arc' || compassState !== 'centerSet') && (currentTool !== 'ruler') && !(currentTool === 'compass' && compassState === 'idle')) return;
+            e.preventDefault();
+            const rawPos = getPosition(e);
+            
+            // --- 定規モード ---
+            if (currentTool === 'ruler') {
+                const snapped = getSnappedPoint(rawPos);
+                currentPos = { x: snapped.x, y: snapped.y };
+                
+                clearPreviewCanvas();
+                if (snapped.x !== rawPos.x || snapped.y !== rawPos.y) drawSnapIndicator(previewCtx, snapped);
+                if (getSnappedPoint(startPos) !== startPos) drawSnapIndicator(previewCtx, startPos);
+
+                if (isDrawing) {
+                    previewCtx.beginPath();
+                    previewCtx.moveTo(startPos.x, startPos.y);
+                    previewCtx.lineTo(currentPos.x, currentPos.y);
+                    applyToolSettings(previewCtx);
+                    previewCtx.setLineDash([5, 5]);
+                    previewCtx.stroke();
+                    previewCtx.setLineDash([]);
+                }
+                return; 
+            }
+
+            // --- コンパス ---
+            if (currentTool === 'compass') {
+                if (compassDrawMode === 'circle') {
+                    if (compassState === 'idle') {
+                        const snapped = getSnappedPoint(rawPos);
+                        clearPreviewCanvas();
+                        drawCross(previewCtx, snapped, 5, 'black');
+                        if (snapped.x !== rawPos.x || snapped.y !== rawPos.y) drawSnapIndicator(previewCtx, snapped);
+                        return;
+                    }
+                    if (compassState === 'drawingArc' && isDrawing) {
+                        let radius;
+                        if (isRadiusLocked) {
+                            currentPos = rawPos;
+                            radius = lockedRadius;
+                        } else {
+                            const snapped = getSnappedPoint(rawPos);
+                            currentPos = { x: snapped.x, y: snapped.y };
+                            radius = Math.hypot(currentPos.x - compassCenter.x, currentPos.y - compassCenter.y);
+                        }
+                        clearPreviewCanvas();
+                        drawCross(previewCtx, compassCenter, 5, 'black');
+                        drawRadiusLine(previewCtx, compassCenter, currentPos, 'red');
+                        drawCircle(previewCtx, compassCenter.x, compassCenter.y, radius, 'red', 1, true);
+                        if (!isRadiusLocked && (currentPos.x !== rawPos.x || currentPos.y !== rawPos.y)) {
+                             drawSnapIndicator(previewCtx, currentPos);
+                        }
+                        return;
+                    }
+                } else {
+                    if (compassState === 'idle') {
+                        const snapped = getSnappedPoint(rawPos);
+                        clearPreviewCanvas();
+                        drawCross(previewCtx, snapped, 5, 'black');
+                        if (snapped.x !== rawPos.x || snapped.y !== rawPos.y) drawSnapIndicator(previewCtx, snapped);
+                        return;
+                    }
+                    if (compassState === 'centerSet') {
+                        const snapped = getSnappedPoint(rawPos);
+                        const pRadius = isRadiusLocked ? lockedRadius : Math.hypot(snapped.x - compassCenter.x, snapped.y - compassCenter.y);
+                        clearPreviewCanvas();
+                        drawCross(previewCtx, compassCenter, 5, 'black');
+                        drawRadiusLine(previewCtx, compassCenter, snapped, 'red');
+                        drawCircle(previewCtx, compassCenter.x, compassCenter.y, pRadius, 'red', 1, true);
+                        if (!isRadiusLocked && (snapped.x !== rawPos.x || snapped.y !== rawPos.y)) drawSnapIndicator(previewCtx, snapped);
+                        return; 
+                    }
+                    if (compassState === 'drawingArc' && isDrawing) {
+                        const snapped = getSnappedPoint(rawPos);
+                        currentPos = { x: snapped.x, y: snapped.y };
+                        clearPreviewCanvas();
+                        
+                        drawRadiusLine(previewCtx, compassCenter, startPos, 'red');
+                        drawCircle(previewCtx, compassCenter.x, compassCenter.y, compassRadius, 'red', 1, true); 
+                        if (getSnappedPoint(startPos) !== startPos) drawSnapIndicator(previewCtx, startPos); 
+                        if (currentPos.x !== rawPos.x || currentPos.y !== rawPos.y) drawSnapIndicator(previewCtx, currentPos);
+
+                        let currentAngle = Math.atan2(currentPos.y - compassCenter.y, currentPos.x - compassCenter.x);
+                        let crossProduct = (startPos.x - compassCenter.x) * (currentPos.y - compassCenter.y) - (startPos.y - compassCenter.y) * (currentPos.x - compassCenter.x);
+                        let drawAsCounterClockwise = (crossProduct < 0);
+                        
+                        previewCtx.beginPath();
+                        previewCtx.arc(compassCenter.x, compassCenter.y, compassRadius, compassStartAngle, currentAngle, drawAsCounterClockwise);
+                        applyToolSettings(previewCtx); 
+                        previewCtx.stroke();
+                        return; 
+                    }
+                }
+            }
+            
+            if (isDrawing) {
+                currentPos = rawPos;
+                switch (currentTool) {
+                    case 'pen':
+                        if (penDrawMode === 'freehand') {
+                            mainCtx.lineTo(currentPos.x, currentPos.y);
+                            mainCtx.stroke();
+                        }
+                        break;
+                    case 'eraser':
+                        mainCtx.lineTo(currentPos.x, currentPos.y);
+                        mainCtx.stroke();
+                        break;
+                    case 'selectErase': {
+                        clearPreviewCanvas();
+                        previewCtx.strokeStyle = '#007bff';
+                        previewCtx.lineWidth = 1;
+                        previewCtx.setLineDash([4, 2]);
+                        const rect = getRect(startPos, currentPos);
+                        previewCtx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+                        previewCtx.setLineDash([]);
+                        break;
+                    }
+                }
+            }
+        }
+
+        function handlePointerUp(e) {
+            e.preventDefault();
+            
+            if (currentTool === 'paste') return;
+            if (currentTool === 'pen' && penDrawMode === 'point') return;
+            
+            if (currentTool === 'compass') {
+                if (compassDrawMode === 'circle') {
+                    if (compassState === 'drawingArc' && isDrawing) {
+                        isDrawing = false;
+                        const pos = getSnappedPoint(getPosition(e));
+                        let finalRadius = isRadiusLocked ? lockedRadius : Math.hypot(pos.x - compassCenter.x, pos.y - compassCenter.y);
+                        if (!isRadiusLocked) compassRadius = finalRadius;
+
+                        clearPreviewCanvas();
+                        applyToolSettings(mainCtx); 
+                        drawCircle(mainCtx, compassCenter.x, compassCenter.y, finalRadius, toolSettings.lineColor, toolSettings.lineWidth, false);
+                        compassState = 'idle';
+                        compassCenter = null;
+                        return;
+                    }
+                } else {
+                    if (compassState === 'centerSet') return; 
+                    if (compassState === 'drawingArc' && isDrawing) {
+                        isDrawing = false;
+                        clearPreviewCanvas();
+                        applyToolSettings(mainCtx); 
+                        const p = getSnappedPoint(getPosition(e));
+                        let endAngle = Math.atan2(p.y - compassCenter.y, p.x - compassCenter.x);
+                        let crossProduct = (startPos.x - compassCenter.x) * (p.y - compassCenter.y) - (startPos.y - compassCenter.y) * (p.x - compassCenter.x);
+                        let drawAsCounterClockwise = (crossProduct < 0);
+                        mainCtx.beginPath();
+                        mainCtx.arc(compassCenter.x, compassCenter.y, compassRadius, compassStartAngle, endAngle, drawAsCounterClockwise);
+                        mainCtx.stroke();
+                        compassState = 'idle';
+                        compassCenter = null;
+                        return;
+                    }
+                }
+            }
+
+            if (!isDrawing) return;
+            isDrawing = false;
+            
+            clearPreviewCanvas(); 
+            
+            switch (currentTool) {
+                case 'pen':
+                case 'eraser':
+                    mainCtx.closePath();
+                    break;
+                case 'ruler': {
+                    // ★★★ スナップ位置で直線を確定 ★★★
+                    const rawPos = getPosition(e);
+                    const snappedPos = getSnappedPoint(rawPos);
+                    currentPos = { x: snappedPos.x, y: snappedPos.y }; 
+
+                    applyToolSettings(mainCtx);
+                    mainCtx.beginPath();
+                    mainCtx.moveTo(startPos.x, startPos.y); 
+                    mainCtx.lineTo(currentPos.x, currentPos.y);
+                    mainCtx.stroke();
+                    break;
+                }
+                case 'selectErase': {
+                    selectionRect = getRect(startPos, currentPos);
+                    mainCtx.clearRect(selectionRect.x, selectionRect.y, selectionRect.w, selectionRect.h);
+                    selectionRect = null;
+                    break;
+                }
+            }
+        }
+        
+        function handlePointerLeave(e) {
+             if (currentTool === 'compass') {
+                 if (compassState !== 'idle') {
+                     compassState = 'idle';
+                     compassCenter = null;
+                     isDrawing = false;
+                     clearPreviewCanvas();
+                     return;
+                 }
+             }
+             if (isDrawing) {
+                 handlePointerUp(e);
+             }
+        }
+
+        // --- 8. 機能別ロジック ---
+
+        function drawPastePreview(pos) {
+            clearPreviewCanvas();
+            if (!pastingImage) return;
+            const width = pastingImage.width * pasteScale;
+            const height = pastingImage.height * pasteScale;
+            
+            previewCtx.globalAlpha = 0.5; 
+            previewCtx.drawImage(pastingImage, pos.x - width/2, pos.y - height/2, width, height);
+            previewCtx.globalAlpha = 1.0;
+            
+            previewCtx.strokeStyle = 'blue';
+            previewCtx.lineWidth = 1;
+            previewCtx.setLineDash([5, 5]);
+            previewCtx.strokeRect(pos.x - width/2, pos.y - height/2, width, height);
+            previewCtx.setLineDash([]);
+        }
+
+        function clearMainCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            mainCtx.clearRect(0, 0, mainCanvas.width / dpr, mainCanvas.height / dpr);
+        }
+
+        function clearPreviewCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            previewCtx.clearRect(0, 0, previewCanvas.width / dpr, previewCanvas.height / dpr);
+        }
+
+        function drawCircle(ctx, x, y, radius, color, width, isPreview) {
+            ctx.beginPath();
+            if (radius <= 0) return;
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            if (isPreview) ctx.setLineDash([5, 5]);
+            ctx.stroke();
+            if (isPreview) ctx.setLineDash([]);
+        }
+
+        function saveFullCanvas() {
+            try {
+                const tempCanvas = document.createElement('canvas');
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCanvas.width = mainCanvas.width;
+                tempCanvas.height = mainCanvas.height;
+                if (backgroundImage) {
+                    tempCtx.drawImage(bgCanvas, 0, 0);
+                } else {
+                    tempCtx.fillStyle = '#ffffff';
+                    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+                }
+                tempCtx.drawImage(mainCanvas, 0, 0);
+                const dataURL = tempCanvas.toDataURL('image/png');
+                downloadImage(dataURL, 'my-drawing.png');
+            } catch (err) {
+                console.error("保存失敗:", err);
+                alert("画像の保存に失敗しました。");
+            }
+        }
+
+        function handleImageLoad(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                backgroundImage = new Image();
+                backgroundImage.onload = function() {
+                    redrawBgCanvas();
+                }
+                backgroundImage.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+            e.target.value = null; 
+        }
+
+        // --- 9. ユーティリティ ---
+
+        function getPosition(e) {
+            const rect = previewCanvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        }
+        
+        function getRect(pos1, pos2) {
+            const x = Math.min(pos1.x, pos2.x);
+            const y = Math.min(pos1.y, pos2.y);
+            const w = Math.abs(pos1.x - pos2.x);
+            const h = Math.abs(pos1.y - pos2.y);
+            return { x, y, w, h };
+        }
+        
+        function downloadImage(dataURL, filename) {
+            const link = document.createElement('a');
+            link.href = dataURL;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        function drawCross(ctx, point, size, color) {
+            ctx.beginPath();
+            ctx.moveTo(point.x - size, point.y);
+            ctx.lineTo(point.x + size, point.y);
+            ctx.moveTo(point.x, point.y - size);
+            ctx.lineTo(point.x, point.y + size);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([]);
+            ctx.stroke();
+        }
+
+        function drawRadiusLine(ctx, center, point, color) {
+            ctx.beginPath();
+            ctx.moveTo(center.x, center.y);
+            ctx.lineTo(point.x, point.y);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        function drawPoint(ctx, pos) {
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, POINT_RADIUS, 0, Math.PI * 2);
+            ctx.fillStyle = toolSettings.lineColor; 
+            ctx.fill();
+        }
+
+        function getSnappedPoint(pos) {
+            for (const point of pointsHistory) {
+                const distance = Math.hypot(pos.x - point.x, pos.y - point.y);
+                if (distance < SNAP_DISTANCE) {
+                    return { x: point.x, y: point.y }; 
+                }
+            }
+            return { x: pos.x, y: pos.y };
+        }
+        
+        function drawSnapIndicator(ctx, pos) {
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, SNAP_DISTANCE, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(0, 0, 255, 0.5)'; 
+            ctx.lineWidth = 1;
+            ctx.setLineDash([2, 2]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // Undo/Redo/State
+        function restoreCanvasState(dataURL, targetCtx, callback = null) {
+            if (!dataURL) {
+                const dpr = window.devicePixelRatio || 1;
+                targetCtx.clearRect(0, 0, targetCtx.canvas.width / dpr, targetCtx.canvas.height / dpr);
+                if (callback) callback();
+                return;
+            }
+            const img = new Image();
+            img.onload = function() {
+                const dpr = window.devicePixelRatio || 1;
+                targetCtx.clearRect(0, 0, targetCtx.canvas.width / dpr, targetCtx.canvas.height / dpr);
+                targetCtx.drawImage(img, 0, 0, mainCtx.canvas.width / dpr, mainCtx.canvas.height / dpr);
+                if (callback) callback();
+            }
+            img.src = dataURL;
+        }
+
+        function saveUndoState() {
+            if (undoHistory.length >= MAX_UNDO_STEPS) {
+                undoHistory.shift(); 
+            }
+            const mainData = mainCanvas.toDataURL();
+            const pointsData = JSON.parse(JSON.stringify(pointsHistory)); 
+            undoHistory.push({ main: mainData, points: pointsData });
+        }
+
+        function undoLastAction() {
+            if (undoHistory.length > 0) {
+                const stateToRestore = undoHistory.pop();
+                pointsHistory = stateToRestore.points; 
+                restoreCanvasState(stateToRestore.main, mainCtx);
+            }
+        }
+        
+        function saveStateToLocalStorage() {
+            if (!confirm('現在の描画状態をPCに保存しますか？')) return;
+            try {
+                const mainData = mainCanvas.toDataURL();
+                localStorage.setItem(STORAGE_KEY_MAIN, mainData);
+                const bgData = backgroundImage ? backgroundImage.src : null;
+                if (bgData) localStorage.setItem(STORAGE_KEY_BG, bgData);
+                else localStorage.removeItem(STORAGE_KEY_BG); 
+                localStorage.setItem(STORAGE_KEY_POINTS, JSON.stringify(pointsHistory));
+                alert('保存しました。');
+            } catch (e) {
+                alert('保存失敗: ' + e.message);
+            }
+        }
+
+        function loadStateFromLocalStorage() {
+            try {
+                const mainData = localStorage.getItem(STORAGE_KEY_MAIN);
+                const bgData = localStorage.getItem(STORAGE_KEY_BG);
+                const pointsData = localStorage.getItem(STORAGE_KEY_POINTS);
+                if (!mainData) { alert('保存データがありません。'); return; }
+                if (!confirm('保存データを読み込みますか？')) return;
+
+                undoHistory = []; 
+                pointsHistory = pointsData ? JSON.parse(pointsData) : [];
+                if (bgData) {
+                    backgroundImage = new Image();
+                    backgroundImage.onload = function() {
+                        redrawBgCanvas();
+                        restoreCanvasState(mainData, mainCtx);
+                    }
+                    backgroundImage.src = bgData;
+                } else {
+                    backgroundImage = null;
+                    redrawBgCanvas(); 
+                    restoreCanvasState(mainData, mainCtx);
+                }
+                alert('読み込みました。');
+            } catch (e) {
+                 alert('読込失敗: ' + e.message);
+            }
+        }
+
+        function clearStateFromLocalStorage() {
+            if (confirm('保存データを消去しますか？')) {
+                localStorage.removeItem(STORAGE_KEY_MAIN);
+                localStorage.removeItem(STORAGE_KEY_BG);
+                localStorage.removeItem(STORAGE_KEY_POINTS); 
+                alert('消去しました。');
+            }
+        }
+    </script>
+</body>
+</html>
