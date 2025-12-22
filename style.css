@@ -1,0 +1,171 @@
+body {
+    margin: 0;
+    overflow: hidden;
+    font-family: sans-serif;
+    background-color: #333;
+}
+#canvas-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: #ffffff;
+    touch-action: none;
+}
+.canvas-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+#bg-canvas { z-index: 1; }
+#main-canvas { z-index: 2; }
+#preview-canvas { z-index: 3; }
+#toolbar {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 10;
+    background: rgba(240, 240, 240, 0.95);
+    border: 1px solid #888;
+    border-radius: 8px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    touch-action: manipulation;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+}
+.tool-button,
+.tool-input {
+    padding: 8px;
+    font-size: 14px;
+    border: 1px solid #777;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background-color: #fff;
+    color: #333;
+    text-align: left;
+}
+.tool-button.active {
+    background-color: #007bff;
+    color: white;
+    border-color: #007bff;
+    font-weight: bold;
+}
+.tool-button.active-lock {
+    background-color: #dc3545; /* 赤色 */
+    color: white;
+    border-color: #dc3545;
+    font-weight: bold;
+}
+.tool-button:hover:not(.active) {
+    background-color: #eee;
+}
+#compassModeToggle,
+#penModeToggle,
+#bgToggle {
+    background-color: #e0e0e0;
+    text-align: center;
+    font-style: italic;
+}
+#modeToggle {
+    background-color: #28a745;
+    color: white;
+    font-weight: bold;
+}
+
+/* ▼ 修正箇所: ボタン横並び用とRedoボタンのスタイル ▼ */
+.button-row {
+    display: flex;
+    gap: 5px;
+    width: 100%;
+}
+#undoButton {
+    background-color: #fff0b3;
+    font-weight: bold;
+    color: #333;
+    flex: 1; /* 横幅を均等に */
+}
+#redoButton {
+    background-color: #ffecd9; /* 少しオレンジっぽい色 */
+    font-weight: bold;
+    color: #333;
+    flex: 1; /* 横幅を均等に */
+}
+/* ▲ 修正箇所ここまで ▲ */
+
+#saveStateButton {
+    background-color: #cce5ff;
+    color: #004085;
+    font-weight: bold;
+}
+#loadStateButton {
+    background-color: #d4edda;
+    color: #155724;
+    font-weight: bold;
+}
+#clearStateButton {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+.separator {
+    height: 1px;
+    background-color: #ccc;
+    margin: 4px 0;
+}
+#pasteInput {
+    display: none;
+}
+.tool-input label {
+    display: block;
+    font-size: 12px;
+    margin-bottom: 4px;
+}
+.tool-input input[type="range"] {
+    width: 100%;
+}
+
+/* カラーパレット */
+#color-palette {
+    display: flex;
+    gap: 5px;
+    margin-top: 5px;
+}
+.color-button {
+    width: 25px;
+    height: 25px;
+    border: 2px solid #888;
+    cursor: pointer;
+    padding: 0;
+    border-radius: 4px;
+    transition: all 0.1s ease;
+}
+.color-button.selected {
+    border-color: #007bff;
+    border-width: 3px;
+    transform: scale(1.1);
+}
+
+body.touch-mode #toolbar {
+    padding: 12px;
+    gap: 12px;
+}
+body.touch-mode .tool-button,
+body.touch-mode .tool-input {
+    padding: 16px;
+    font-size: 18px;
+    font-weight: bold;
+}
+body.touch-mode .tool-input label {
+     font-size: 14px;
+}
+body.touch-mode .color-button {
+    width: 35px;
+    height: 35px;
+    gap: 8px;
+}

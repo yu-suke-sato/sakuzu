@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>デジタル作図アプリ v2.7</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="canvas-container">
+        <canvas id="bg-canvas" class="canvas-layer"></canvas>
+        <canvas id="main-canvas" class="canvas-layer"></canvas>
+        <canvas id="preview-canvas" class="canvas-layer"></canvas>
+    </div>
+
+    <div id="toolbar">
+        <button id="modeToggle">タッチモードへ</button>
+        <button id="bgToggle" class="tool-button">背景: 白</button>
+        <div class="separator"></div>
+
+        <button id="compassButton" class="tool-button">1. コンパス</button>
+        <button id="compassModeToggle" class="tool-button">1b. 円を描く</button>
+        <button id="compassLockRadiusButton" class="tool-button">1c. 半径を固定</button>
+        <button id="rulerButton" class="tool-button">2. 定規</button>
+        <button id="penButton" class="tool-button">3. ペン (フリーハンド)</button>
+        <button id="penModeToggle" class="tool-button">3b. 点を打つ</button>
+        
+        <div class="separator"></div>
+
+        <button id="eraserButton" class="tool-button">4. 消しゴム</button>
+        <button id="selectEraseButton" class="tool-button">5. 選択消去</button>
+        <button id="clearAllButton" class="tool-button">6. 全消去(描画のみ)</button>
+        
+        <div class="button-row">
+            <button id="undoButton" class="tool-button">元に戻す</button>
+            <button id="redoButton" class="tool-button">やり直し</button>
+        </div>
+        <div class="separator"></div>
+
+        <button id="lassoButton" class="tool-button">7. 投げ縄 (切り取り移動)</button>
+
+        <div class="separator"></div>
+
+        <button id="saveFullButton" class="tool-button">8. 全画面保存(画像)</button>
+        
+        <button id="pasteImageButton" class="tool-button">9. 画像貼り付け</button>
+        <input type="file" id="pasteInput" accept="image/*">
+
+        <div class="separator"></div>
+        
+        <button id="saveStateButton" class="tool-button">10. 作業を保存 (PCに)</button>
+        <button id="loadStateButton" class="tool-button">11. 作業を読込 (PCから)</button>
+        <button id="clearStateButton" class="tool-button">12. 保存を消去</button>
+
+        <div class="separator"></div>
+
+        <div class="tool-input">
+            <label for="lineWidthSlider">線の太さ / 画像・サイズ: <span id="lineWidthValue">5</span></label>
+            <input type="range" id="lineWidthSlider" min="1" max="100" value="5">
+        </div>
+        
+        <div class="tool-input">
+            <label>線の色</label>
+            <div id="color-palette">
+                <button class="color-button" data-color="#000000" style="background-color: #000000;"></button>
+                <button class="color-button" data-color="#FF0000" style="background-color: #FF0000;"></button>
+                <button class="color-button" data-color="#0000FF" style="background-color: #0000FF;"></button>
+                <button class="color-button" data-color="#008000" style="background-color: #008000;"></button>
+                <button class="color-button" data-color="#FFFF00" style="background-color: #FFFF00;"></button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
